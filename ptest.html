@@ -1,180 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>T9 Browser</title>
 
+<!-- UV -->
 <script src="/uv/uv.bundle.js"></script>
 <script src="/uv/uv.config.js"></script>
-<script src="/baremux/index.js"></script>
-
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
 <style>
-* { box-sizing: border-box; font-family: Inter, system-ui; }
-html,body { margin:0;height:100%;background:#1e1e1e;overflow:hidden;}
-.browser-ui{height:96px;background:#2b2b2b;display:flex;flex-direction:column;}
-.tabs{height:38px;display:flex;align-items:center;padding:0 8px;gap:6px;}
-.tab{height:28px;min-width:160px;padding:0 12px;border-radius:8px 8px 0 0;background:#3a3a3a;color:#ddd;display:flex;align-items:center;gap:8px;cursor:pointer;}
-.tab.active{background:#1e1e1e;color:white;}
-.newtab{width:32px;height:32px;background:none;border:none;color:#aaa;cursor:pointer;}
-.navbar{height:58px;display:flex;align-items:center;gap:10px;padding:0 12px;}
-.urlbar{flex:1;height:36px;background:#3a3a3a;border-radius:18px;padding:0 16px;display:flex;align-items:center;}
-.urlbar input{width:100%;background:none;border:none;color:white;outline:none;}
-.viewframe{position:absolute;top:96px;width:100%;height:calc(100% - 96px);border:none;display:none;}
-.viewframe.active{display:block;}
-.ntp{position:absolute;top:96px;width:100%;height:calc(100% - 96px);display:flex;align-items:center;justify-content:center;color:white;}
+body{
+  margin:0;
+  background:#1e1e1e;
+  font-family:sans-serif;
+}
+
+#top{
+  display:flex;
+  gap:8px;
+  padding:10px;
+  background:#2b2b2b;
+}
+
+#url{
+  flex:1;
+  padding:10px;
+  border:none;
+  border-radius:6px;
+}
+
+button{
+  padding:10px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+iframe{
+  width:100%;
+  height:calc(100vh - 60px);
+  border:none;
+  background:white;
+}
 </style>
 </head>
 
 <body>
 
-<div class="browser-ui">
-<div class="tabs" id="tabs">
-<button class="newtab" id="newtab">+</button>
+<div id="top">
+  <input id="url" placeholder="Enter URL">
+  <button onclick="go()">Go</button>
 </div>
 
-<div class="navbar">
-<button id="back">←</button>
-<button id="forward">→</button>
-<button id="reload">⟳</button>
-
-<form class="urlbar" id="form">
-<input id="url" placeholder="Search or enter address">
-</form>
-
-<button id="popout">↗</button>
-</div>
-</div>
-
-<div class="ntp" id="ntp"><h1>T9 Browser</h1></div>
+<iframe id="frame"></iframe>
 
 <script>
-navigator.serviceWorker?.register("/uv/sw.js")
+const frame = document.getElementById("frame")
+const input = document.getElementById("url")
 
-const connection=new BareMux.BareMuxConnection("/baremux/worker.js")
-connection.setTransport("/libcurl/index.mjs",[{websocket:"wss://webmath.help/wisp/"}])
-
-const tabsEl=document.getElementById("tabs")
-const newTabBtn=document.getElementById("newtab")
-const urlInput=document.getElementById("url")
-const ntp=document.getElementById("ntp")
-
-let tabs=[]
-let activeId=null
-let idCounter=0
-
-function createTab(url=""){
-const id=idCounter++
-const iframe=document.createElement("iframe")
-iframe.className="viewframe"
-iframe.dataset.id=id
-iframe.sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
-document.body.appendChild(iframe)
-
-const tabBtn=document.createElement("div")
-tabBtn.className="tab"
-tabBtn.dataset.id=id
-tabBtn.innerHTML=`<span>New Tab</span>`
-
-tabBtn.onclick=()=>activateTab(id)
-tabsEl.insertBefore(tabBtn,newTabBtn)
-
-tabs.push({id,iframe,tabBtn,history:[],index:-1})
-activateTab(id)
-if(url) navigate(url)
+function normalize(u){
+  if(!u.startsWith("http")) return "https://" + u
+  return u
 }
 
-function activateTab(id){
-activeId=id
-tabs.forEach(t=>{
-t.iframe.classList.toggle("active",t.id===id)
-t.tabBtn.classList.toggle("active",t.id===id)
+async function go(){
+  const url = normalize(input.value)
+
+  const isT9 =
+    location.hostname === "t9os.space" ||
+    location.hostname === "www.t9os.space"
+
+  /* ===== T9 DOMAIN → CODETABS ===== */
+  if(isT9){
+    try{
+      const res = await fetch(
+        "https://api.codetabs.com/v1/proxy/?quest=" +
+        encodeURIComponent(url)
+      )
+
+      const html = await res.text()
+
+      const doc = new DOMParser()
+        .parseFromString(html,"text/html")
+
+      /* Fix relative links */
+      const base = doc.createElement("base")
+      base.href = url
+      doc.head.prepend(base)
+
+      /* Render page */
+      frame.srcdoc = doc.documentElement.outerHTML
+
+    }catch{
+      frame.srcdoc = "<h1>Load failed</h1>"
+    }
+  }
+
+  /* ===== OTHER DOMAINS → UV ===== */
+  else{
+    frame.src =
+      __uv$config.prefix +
+      __uv$config.encodeUrl(url)
+  }
+}
+
+/* Enter key support */
+input.addEventListener("keydown", e=>{
+  if(e.key === "Enter") go()
 })
-}
-
-function normalize(input){
-if(!input.includes(".")) return "https://search.brave.com/search?q="+encodeURIComponent(input)
-if(!input.startsWith("http")) return "https://"+input
-return input
-}
-
-/* ===== UPDATED NAVIGATE FUNCTION ===== */
-function navigate(input,push=true){
-const tab=getTab()
-if(!tab) return
-
-const url=normalize(input)
-
-if(push){
-tab.history=tab.history.slice(0,tab.index+1)
-tab.history.push(url)
-tab.index++
-}
-
-const isT9=
-location.hostname==="t9os.space"||
-location.hostname==="www.t9os.space"
-
-if(isT9){
-tab.iframe.src=
-"https://api.codetabs.com/v1/proxy/?quest="+encodeURIComponent(url)
-}else{
-tab.iframe.src=
-__uv$config.prefix+__uv$config.encodeUrl(url)
-}
-
-urlInput.value=url
-ntp.style.display="none"
-
-tab.iframe.onload=()=>{
-try{
-tab.tabBtn.querySelector("span").textContent=
-tab.iframe.contentDocument?.title||
-new URL(url).hostname
-}catch{
-tab.tabBtn.querySelector("span").textContent=
-new URL(url).hostname
-}
-}
-}
-
-function getTab(){return tabs.find(t=>t.id===activeId)}
-
-/* CONTROLS */
-back.onclick=()=>{
-const t=getTab()
-if(!t||t.index<=0) return
-t.index--
-navigate(t.history[t.index],false)
-}
-
-forward.onclick=()=>{
-const t=getTab()
-if(!t||t.index>=t.history.length-1) return
-t.index++
-navigate(t.history[t.index],false)
-}
-
-reload.onclick=()=>{
-const t=getTab()
-if(t) t.iframe.src=t.iframe.src
-}
-
-popout.onclick=()=>{
-const t=getTab()
-if(t) window.open(t.iframe.src)
-}
-
-form.onsubmit=e=>{
-e.preventDefault()
-navigate(urlInput.value)
-}
-
-newTabBtn.onclick=()=>createTab()
-
-createTab()
 </script>
 
 </body>
