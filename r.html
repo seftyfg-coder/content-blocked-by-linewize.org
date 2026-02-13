@@ -141,6 +141,7 @@ html, body {
     height: calc(100% - 96px);
     border: none;
     display: none;
+    background: white;
 }
 
 .viewframe.active {
@@ -162,7 +163,7 @@ html, body {
 }
 body{
       background-repeat: no-repeat;
-  background-size: cover;   /* make sure images cover the whole screen */
+  background-size: cover;
   margin: 0;
   padding: 0;
   font-family: Arial, sans-serif;
@@ -196,6 +197,10 @@ body{
 </div>
 
 <script>
+// Check if we're on t9os.space to determine proxy mode
+const isT9OS = location.hostname === "t9os.space" || location.hostname === "www.t9os.space";
+const USE_CODETABS_PROXY = isT9OS;
+
 navigator.serviceWorker?.register("/uv/sw.js")
 
 const connection = new BareMux.BareMuxConnection("/baremux/worker.js")
@@ -282,7 +287,7 @@ function normalize(input) {
     return input
 }
 
-function navigate(input, push = true) {
+async function navigate(input, push = true) {
     const tab = getTab()
     if (!tab) return
 
@@ -294,19 +299,75 @@ function navigate(input, push = true) {
         tab.index++
     }
 
-    tab.iframe.src = __uv$config.prefix + __uv$config.encodeUrl(url)
+    if (USE_CODETABS_PROXY) {
+        // Use CodeTabs proxy with srcdoc rendering
+        try {
+            const res = await fetch(
+                "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(url)
+            )
+            
+            const html = await res.text()
+            
+            // Parse HTML
+            const parser = new DOMParser()
+            const doc = parser.parseFromString(html, "text/html")
+            
+            // Fix relative links by adding base tag
+            const base = doc.createElement("base")
+            base.href = url
+            doc.head.prepend(base)
+            
+            // Inject proxy script to handle navigation clicks
+            const script = doc.createElement("script")
+            script.textContent = `
+                // Intercept all link clicks to route through proxy
+                document.addEventListener('click', function(e) {
+                    const link = e.target.closest('a');
+                    if (link && link.href) {
+                        e.preventDefault();
+                        window.parent.postMessage({type: 'navigate', url: link.href}, '*');
+                    }
+                });
+                // Update parent with current URL
+                window.parent.postMessage({type: 'title', title: document.title}, '*');
+            `
+            doc.head.appendChild(script)
+            
+            // Render page using srcdoc
+            tab.iframe.srcdoc = doc.documentElement.outerHTML
+            tab.iframe.dataset.currentUrl = url
+            
+        } catch (err) {
+            tab.iframe.srcdoc = "<h1 style='color:red;text-align:center;margin-top:50px;'>Failed to load page</h1><p style='text-align:center;'>" + err.message + "</p>"
+        }
+    } else {
+        // Use normal UV proxy
+        tab.iframe.removeAttribute('srcdoc')
+        tab.iframe.src = __uv$config.prefix + __uv$config.encodeUrl(url)
+    }
+    
     urlInput.value = url
     ntp.style.display = "none"
 
-    tab.iframe.onload = () => {
-        tab.tabBtn.querySelector("span").textContent =
-            tab.iframe.contentDocument?.title || new URL(url).hostname
-    }
+    // Update tab title
+    tab.tabBtn.querySelector("span").textContent = new URL(url).hostname
 }
 
 function getTab() {
     return tabs.find(t => t.id === activeId)
 }
+
+// Listen for messages from iframe (for CodeTabs proxy navigation)
+window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'navigate' && e.data.url) {
+        navigate(e.data.url)
+    } else if (e.data && e.data.type === 'title' && e.data.title) {
+        const tab = getTab()
+        if (tab) {
+            tab.tabBtn.querySelector("span").textContent = e.data.title
+        }
+    }
+})
 
 /* ===== CONTROLS ===== */
 back.onclick = () => {
@@ -326,13 +387,24 @@ forward.onclick = () => {
 reload.onclick = () => {
     const t = getTab()
     if (!t) return
-    t.iframe.src = t.iframe.src
+    
+    if (USE_CODETABS_PROXY && t.iframe.dataset.currentUrl) {
+        // Reload using stored URL
+        navigate(t.iframe.dataset.currentUrl, false)
+    } else {
+        t.iframe.src = t.iframe.src
+    }
 }
 
 popout.onclick = () => {
     const t = getTab()
     if (!t) return
-    window.open(t.iframe.src, "_blank")
+    
+    if (USE_CODETABS_PROXY && t.iframe.dataset.currentUrl) {
+        window.open(t.iframe.dataset.currentUrl, "_blank")
+    } else {
+        window.open(t.iframe.src, "_blank")
+    }
 }
 
 form.onsubmit = e => {
@@ -344,58 +416,7 @@ newTabBtn.onclick = () => createTab()
 
 createTab()
 </script>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const select = document.getElementById("background-select");
-  const upload = document.getElementById("background-upload");
-  const body = document.body;
 
-  // Apply background
-  function setBackground(src) {
-    body.style.backgroundImage = src ? `url(${src})` : "";
-    localStorage.setItem("selectedBackground", src || "");
-  }
-
-  // Load saved background
-  const savedBg = localStorage.getItem("selectedBackground");
-  if (savedBg) setBackground(savedBg);
-
-  // Dropdown change
-  select.addEventListener("change", () => {
-    if (select.value) {
-      setBackground(select.value);
-    }
-  });
-
-  // Upload custom background
-  upload.addEventListener("change", () => {
-    const file = upload.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setBackground(reader.result); // base64 image
-      select.value = ""; // reset dropdown
-    };
-    reader.readAsDataURL(file);
-  });
-});
-</script>
-
-<script>
-if (
-  (location.hostname === "t9os.space" || location.hostname === "www.t9os.space") &&
-  location.pathname === "/r.html"
-) {
-  const links = [
-    "https://learnify.vercel.app/r.html",
-    "https://t9oss.vercel.app/r.html"
-  ];
-
-  const randomLink = links[Math.floor(Math.random() * links.length)];
-  window.location.replace(randomLink);
-}
-</script>
 
 
 <script>
@@ -405,7 +426,6 @@ window.addEventListener('beforeunload', function (e) {
     return '';
 });
 </script>
-
 
 </body>
 </html>
