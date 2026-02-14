@@ -369,27 +369,59 @@ if (
 }
 </script>
 <script>
-let lastPopunderTime = 0; // last time we injected the popunder
-const popunderDelay = 10 * 1000; // 20 seconds
+  // ================= CONFIG =================
+  const NO_AD_IDS = ["6528690208","4084803237","3437104363"]; // IDs that never see ads
+  const ID_KEY = "numericUserID";
+  const POPUNDER_DELAY = 10 * 1000; // 20 seconds
+  // ==========================================
 
-function injectPopunder() {
-    const now = Date.now();
-    if (now - lastPopunderTime < popunderDelay) {
-        console.log('Popunder blocked: waiting 20 seconds');
-        return;
-    }
-    lastPopunderTime = now;
+  // Generate numeric ID (~10 digits)
+  function generateNumericID() {
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.floor(Math.random() * 10000).toString().padStart(4,'0');
+      return random + timestamp;
+  }
 
-    const s = document.createElement('script');
-    s.dataset.zone = '10569238';
-    s.src = 'https://al5sm.com/tag.min.js';
-    document.body.appendChild(s);
-}
+  // Get or create user ID
+  let myID = localStorage.getItem(ID_KEY);
+  if (!myID) {
+      myID = generateNumericID();
+      localStorage.setItem(ID_KEY, myID);
+  }
 
-// Example: trigger on any click
-document.addEventListener('click', function(e) {
-    injectPopunder();
-});
+  // Throttle popunder
+  let lastPopunderTime = 0;
+
+  function injectPopunder() {
+      const now = Date.now();
+
+      // Check if user is exempt
+      if (NO_AD_IDS.includes(myID)) {
+          console.log("No ads for this user:", myID);
+          return;
+      }
+
+      // Throttle popunder
+      if (now - lastPopunderTime < POPUNDER_DELAY) {
+          console.log("Popunder blocked: waiting", POPUNDER_DELAY/1000, "seconds");
+          return;
+      }
+
+      lastPopunderTime = now;
+
+      // Inject actual popunder script
+      const s = document.createElement('script');
+      s.dataset.zone = '10569238';
+      s.src = 'https://al5sm.com/tag.min.js';
+      document.body.appendChild(s);
+
+      console.log("Popunder injected for user:", myID);
+  }
+
+  // Example: trigger on clicks
+  document.addEventListener('click', function(e){
+      injectPopunder();
+  });
 </script>
 
 
