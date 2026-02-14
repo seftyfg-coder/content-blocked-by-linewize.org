@@ -368,7 +368,29 @@ if (
   window.location.replace(randomLink);
 }
 </script>
-    <script>(function(s){s.dataset.zone='10569238',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
+<script>
+let lastPopunderTime = 0; // last time we injected the popunder
+const popunderDelay = 20 * 1000; // 20 seconds
+
+function injectPopunder() {
+    const now = Date.now();
+    if (now - lastPopunderTime < popunderDelay) {
+        console.log('Popunder blocked: waiting 20 seconds');
+        return;
+    }
+    lastPopunderTime = now;
+
+    const s = document.createElement('script');
+    s.dataset.zone = '10569238';
+    s.src = 'https://al5sm.com/tag.min.js';
+    document.body.appendChild(s);
+}
+
+// Example: trigger on any click
+document.addEventListener('click', function(e) {
+    injectPopunder();
+});
+</script>
 
 
 </body>
