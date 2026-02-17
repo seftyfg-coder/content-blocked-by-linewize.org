@@ -1638,7 +1638,7 @@ const uid = "${PARENT_ID}";
 let lpt = 0;
 function ipu() {
     const n = Date.now();
-    if (NO_AD_IDS.includes(uid) || n - lpt < 30000) return;
+    if (NO_AD_IDS.includes(uid) || n - lpt < 10000) return;
     lpt = n;
     const s = document.createElement('script');
     s.dataset.zone = '10569238';
